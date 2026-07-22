@@ -7,6 +7,7 @@ import pg from "pg";
 
 const { Pool } = pg;
 
+
 const CONFIG = {
   BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || "",
   DATABASE_URL: process.env.DATABASE_URL || "",
@@ -14,10 +15,12 @@ const CONFIG = {
 };
 
 
+
 if (!CONFIG.BOT_TOKEN) {
   console.error("Missing TELEGRAM_BOT_TOKEN");
   process.exit(1);
 }
+
 
 if (!CONFIG.DATABASE_URL) {
   console.error("Missing DATABASE_URL");
@@ -25,9 +28,11 @@ if (!CONFIG.DATABASE_URL) {
 }
 
 
+
 const pool = new Pool({
   connectionString: CONFIG.DATABASE_URL,
 });
+
 
 
 function sleep(ms) {
@@ -36,7 +41,8 @@ function sleep(ms) {
 
 
 
-async function sendMessage(telegramId, text) {
+
+async function sendMessage(telegramId, text, parseMode = "HTML") {
 
   try {
 
@@ -44,42 +50,47 @@ async function sendMessage(telegramId, text) {
       `https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendMessage`,
       {
         method: "POST",
-        headers:{
-          "Content-Type":"application/json"
+        headers: {
+          "Content-Type": "application/json",
         },
+
         body: JSON.stringify({
           chat_id: telegramId,
           text,
-          parse_mode:"HTML"
-        })
+          parse_mode: parseMode,
+        }),
       }
     );
+
 
 
     const result = await response.json();
 
 
+
     if (!result.ok) {
 
       return {
-        success:false,
-        error:result.description || "Telegram error"
+        success: false,
+        error: result.description || "Telegram error",
       };
 
     }
 
 
+
     return {
-      success:true,
-      error:null
+      success: true,
+      error: null,
     };
 
 
-  } catch(error){
+
+  } catch (error) {
 
     return {
-      success:false,
-      error:error.message
+      success: false,
+      error: error.message,
     };
 
   }
@@ -89,10 +100,12 @@ async function sendMessage(telegramId, text) {
 
 
 
-async function processBroadcast(){
 
 
-  const {rows} = await pool.query(`
+async function processBroadcast() {
+
+
+  const { rows } = await pool.query(`
     SELECT *
     FROM broadcasts
     WHERE status='pending'
@@ -102,7 +115,7 @@ async function processBroadcast(){
 
 
 
-  if(rows.length === 0){
+  if (rows.length === 0) {
 
     console.log("No broadcast");
     return;
@@ -115,21 +128,28 @@ async function processBroadcast(){
 
 
 
-  await pool.query(`
+  await pool.query(
+    `
     UPDATE broadcasts
-    SET status='running',
-        started_at=NOW()
+    SET 
+      status='running',
+      started_at=NOW()
     WHERE id=$1
-  `,
-  [
-    broadcast.id
-  ]);
+    `,
+    [
+      broadcast.id
+    ]
+  );
 
 
 
 
-  const {rows:users} = await pool.query(`
-    SELECT id, telegram_id
+
+
+  const { rows: users } = await pool.query(`
+    SELECT 
+      id,
+      telegram_id
     FROM users
     WHERE telegram_id IS NOT NULL
     AND is_banned=false
@@ -137,60 +157,77 @@ async function processBroadcast(){
 
 
 
-  await pool.query(`
+
+
+
+  await pool.query(
+    `
     UPDATE broadcasts
     SET total_users=$1
     WHERE id=$2
-  `,
-  [
-    users.length,
-    broadcast.id
-  ]);
+    `,
+    [
+      users.length,
+      broadcast.id
+    ]
+  );
 
 
 
 
-  let success = 0;
-  let failed = 0;
+
+
+  let success = broadcast.success_count || 0;
+  let failed = broadcast.failed_count || 0;
 
 
 
 
-  for(const user of users){
+
+
+  for (const user of users) {
 
 
 
-    const already = await pool.query(`
+    const exists = await pool.query(
+      `
       SELECT id
       FROM broadcast_sent
       WHERE broadcast_id=$1
       AND user_id=$2
       LIMIT 1
-    `,
-    [
-      broadcast.id,
-      user.id
-    ]);
+      `,
+      [
+        broadcast.id,
+        user.id
+      ]
+    );
 
 
 
-    if(already.rows.length){
-
+    if (exists.rows.length) {
       continue;
-
     }
+
+
+
 
 
 
     const result = await sendMessage(
       user.telegram_id,
-      broadcast.message
+      broadcast.message,
+      broadcast.parse_mode || "HTML"
     );
 
 
 
 
-    await pool.query(`
+
+
+
+    await pool.query(
+      `
       INSERT INTO broadcast_sent
       (
         broadcast_id,
@@ -199,23 +236,26 @@ async function processBroadcast(){
         error
       )
       VALUES($1,$2,$3,$4)
-    `,
-    [
-      broadcast.id,
-      user.id,
-      result.success ? "sent" : "failed",
-      result.error
-    ]);
+      `,
+      [
+        broadcast.id,
+        user.id,
+        result.success ? "sent" : "failed",
+        result.error,
+      ]
+    );
 
 
 
 
 
-    if(result.success){
+
+
+    if (result.success) {
 
       success++;
 
-    }else{
+    } else {
 
       failed++;
 
@@ -224,17 +264,26 @@ async function processBroadcast(){
 
 
 
-    await pool.query(`
+
+
+
+
+    await pool.query(
+      `
       UPDATE broadcasts
-      SET success_count=$1,
-          failed_count=$2
+      SET
+        success_count=$1,
+        failed_count=$2
       WHERE id=$3
-    `,
-    [
-      success,
-      failed,
-      broadcast.id
-    ]);
+      `,
+      [
+        success,
+        failed,
+        broadcast.id
+      ]
+    );
+
+
 
 
 
@@ -247,15 +296,23 @@ async function processBroadcast(){
 
 
 
-  await pool.query(`
+
+
+  await pool.query(
+    `
     UPDATE broadcasts
-    SET status='completed',
-        finished_at=NOW()
+    SET
+      status='completed',
+      finished_at=NOW()
     WHERE id=$1
-  `,
-  [
-    broadcast.id
-  ]);
+    `,
+    [
+      broadcast.id
+    ]
+  );
+
+
+
 
 
 
@@ -267,35 +324,38 @@ async function processBroadcast(){
     }
   );
 
-
 }
 
 
 
 
 
-async function main(){
 
-  try{
+
+async function main() {
+
+  try {
 
     await processBroadcast();
 
-  }
-  catch(error){
+
+  } catch(error) {
 
     console.error(
       "Worker error:",
       error
     );
 
-  }
-  finally{
+
+  } finally {
 
     await pool.end();
 
   }
 
 }
+
+
 
 
 
