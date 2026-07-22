@@ -4,10 +4,9 @@
   "type": "module",
   "scripts": {
     "start": "node farm-notifier.js",
-    "broadcast": "node broadcast-server.js"
+    "broadcast": "node broadcast-worker.js"
   },
   "dependencies": {
-    "express": "^4.21.2",
     "pg": "^8.13.0"
   }
 }
