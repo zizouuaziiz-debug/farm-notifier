@@ -3,9 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "node farm-notifier.js"
+    "start": "node farm-notifier.js",
+    "broadcast": "node broadcast-server.js"
   },
   "dependencies": {
+    "express": "^4.21.2",
     "pg": "^8.13.0"
   }
 }
